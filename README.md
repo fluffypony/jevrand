@@ -26,7 +26,7 @@ with `uv tool uninstall jevrand`.
 For a local checkout, run `uv tool install .` from the repository directory.
 After you pull changes, run `uv tool install --reinstall .` to update that copy.
 
-The default range is 0 to 10 000, inclusive, using integers. The command prints the first approved number and stops. Rejected numbers trigger another attempt, with no attempt limit unless you set one.
+The default range is 0 to 10 000, inclusive, using integers. You see every candidate and Jev's verdict as it arrives. Rejected numbers trigger another attempt, and the first approved number is the final line. There is no attempt limit unless you set one.
 
 For OpenRouter, set `OPENROUTER_API_KEY` instead:
 
@@ -46,39 +46,50 @@ You can also run the CLI with `python3 -m jevrand`.
 | Command | Behaviour |
 | --- | --- |
 | `jevrand` | Generate an approved integer from 0 to 10 000. |
-| `jevrand 100` | Generate from 0 to 100. |
-| `jevrand -10 10` | Generate from -10 to 10. |
-| `jevrand 1 2 --decimals 3` | Generate from 1.000 to 2.000, in steps of 0.001. |
-| `jevrand 100 --decimals` | Use two decimal places. |
-| `jevrand check 42` | Submit 42 for a single verdict. |
-| `jevrand check 3.14159 --json` | Submit a decimal and return JSON. |
-| `jevrand --verbose --max-attempts 50` | Show each verdict and stop after at most 50 attempts. |
+| `jevrand 8008` | Check 8008 once and print the verdict with its explanation. |
+| `jevrand 3.14159 --json` | Check a decimal and return one JSON object. |
+| `jevrand --range 100` | Generate from 0 to 100. |
+| `jevrand --range -10 10` | Generate from -10 to 10. |
+| `jevrand --range 1 2 --decimals 3` | Generate from 1.000 to 2.000, in steps of 0.001. |
+| `jevrand --range 100 --decimals` | Generate with two decimal places. |
+| `jevrand --max-attempts 50` | Generate with a limit of 50 candidates. |
 | `jevrand reasons` | Print the rejection catalogue without an API call. |
 
-All ranges include their endpoints when those endpoints fall on the selected decimal grid. With `--decimals 2`, for example, the range `1.001 1.029` contains `1.01` and `1.02`. The default is zero decimal places, and the supported range is 0 to 9. `--decimals` and `--max-attempts` apply only to generation.
+Give jevrand a number and it checks that number once. A rejection includes the reason and stops there. It never substitutes another number. Checks accept supported finite numbers outside the generator's default range, so `jevrand -42` and `jevrand 65536` need no range options.
 
-`check` accepts a supported finite number without applying the generator's default range. You can submit `-42` or `65536` without changing any bounds.
+For generation, use `--range TOP` or `--range BOTTOM TOP`. All ranges include their endpoints when those endpoints fall on the selected decimal grid. With `--decimals 2`, for example, `--range 1.001 1.029` contains `1.01` and `1.02`. The default is zero decimal places, and the supported range is 0 to 9.
+
+`--range`, `--decimals`, and `--max-attempts` apply only to generation. Combining any of them with a number to check is an error.
 
 | Option | Effect |
 | --- | --- |
-| `--json` | Write the result as JSON. Also works with `check` and `reasons`. |
-| `--verbose` | Write each generation verdict to stderr. |
+| `--range TOP` or `--range BOTTOM TOP` | Set the generation range. A single bound uses 0 as the bottom. |
+| `--json` | Write one JSON object for a check, or one object per line for generation. Also works with `reasons`. |
 | `--decimals [N]` | Use `N` decimal places, or 2 when `N` is omitted. |
 | `--provider typesafe\|openrouter` | Select the provider explicitly. |
 | `--timeout SECONDS` | Set the socket timeout, greater than 0 and at most 86 400 seconds. Default: 30. |
-| `--max-attempts N` | Stop generation after `N` rejected candidates. Default: unlimited. |
+| `--max-attempts N` | Check at most `N` candidates during generation. Default: unlimited. |
 | `--help` | Show command help. |
 | `--version` | Show the installed version. |
 
 Each candidate requires an API request and may incur a charge. If Jev dislikes every number in your range, the default loop can run indefinitely. Set `--max-attempts` when you want a limit:
 
 ```sh
-jevrand 100 --max-attempts 20 --json
+jevrand --range 100 --max-attempts 20 --json
 ```
 
 An API error stops the command immediately, without retries. jevrand does not switch providers or count a failed request as a rejection.
 
-Plain generation writes only the approved number to stdout, so you can use it in a shell pipeline. `--verbose` keeps the objections on stderr. Decimal output retains the requested number of places; JSON uses numbers and does not retain trailing zeros.
+Generation writes every candidate, verdict, and explanation to stdout. For example, a run might look like this:
+
+```text
+[1] 888: rejected. Looks like a stuck key
+[2] 738: approved. Jev has no objection.
+```
+
+Those verdicts illustrate the output format; Jev makes the actual decisions. The accepted candidate appears once, at the end. Each line is flushed immediately, including when you pipe the output. Decimal output retains the requested number of places for every candidate.
+
+With `--json`, generation writes JSON Lines: one result object per candidate, with the approved candidate last. Each object includes `reasons`, `explanation`, and the attempt count. A check writes one result object. JSON numbers do not retain trailing zeros.
 
 Exit codes:
 
@@ -87,7 +98,7 @@ Exit codes:
 - `2`: An input, configuration, provider, or response error.
 - `130`: Ctrl-C.
 
-With `--json`, errors use `{"error": {"code": "...", "message": "..."}}` on stdout.
+With `--json`, errors use `{"error": {"code": "...", "message": "..."}}` on stdout. If generation fails after some verdicts, the error is a separate line after those results.
 
 ## Python library
 
@@ -110,7 +121,7 @@ verdict = client.check(42)
 print(verdict.approved, verdict.reasons, verdict.explanation)
 ```
 
-The library uses the same environment variables and provider order as the CLI. Each call to `check` makes one request. `generate` returns the first approved result.
+The library uses the same environment variables and provider order as the CLI. Each call to `check` makes one request. `generate` returns the first approved result. Neither method prints anything.
 
 Set the provider and timeout with `Jevrand(provider="openrouter", timeout=10)`. You can also pass `api_key` to the constructor, provided you specify `provider`. Number inputs accept `int`, `float`, decimal strings, and `Decimal` values.
 
@@ -141,7 +152,7 @@ Results expose these fields:
 | `model` | The model identifier sent to the provider. |
 | `attempts` | The number of candidates checked so far. A standalone check uses 1. |
 
-`to_dict()` returns the same fields as a dictionary, and `to_json()` serialises them. CLI JSON uses this same result format.
+`to_dict()` returns the same fields as a dictionary, and `to_json()` serialises one result object. The CLI uses this format for each verdict, with one object per line during generation.
 
 For example, a `too_famous` verdict for 42 would look like this:
 

@@ -1,6 +1,9 @@
+import json
+
 import pytest
 
 from jevrand import Jevrand
+from jevrand.cli import main
 from jevrand.numbers import NumberRange
 
 
@@ -44,3 +47,39 @@ def test_generation_rejects_888_and_continues_with_a_new_candidate(live_client, 
     assert result.attempts == 2
     assert verdicts[0].number == 888
     assert verdicts[0].approved is False
+
+
+def test_cli_checks_8008_without_a_replacement(live_client, monkeypatch, capsys):
+    def forbid_generation(self):
+        pytest.fail("A supplied number must not trigger generation.")
+
+    monkeypatch.setattr(NumberRange, "draw", forbid_generation)
+    assert main(["8008", "--provider", live_client.provider]) == 1
+    output = capsys.readouterr()
+    assert not output.err
+    assert len(output.out.splitlines()) == 1
+    assert output.out.startswith("8008: rejected."), output.out
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_cli_shows_rejection_before_final_approval(live_client, monkeypatch, capsys, json_output):
+    candidates = iter([888, 738])
+    monkeypatch.setattr(NumberRange, "draw", lambda self: next(candidates))
+    arguments = ["--range", "0", "10000", "--provider", live_client.provider, "--max-attempts", "2"]
+    if json_output:
+        arguments.append("--json")
+
+    assert main(arguments) == 0
+    output = capsys.readouterr()
+    assert not output.err
+    lines = output.out.splitlines()
+    assert len(lines) == 2, output.out
+    if json_output:
+        rejected, approved = map(json.loads, lines)
+        assert rejected["number"] == 888 and rejected["approved"] is False
+        assert rejected["reasons"] and rejected["explanation"]
+        assert approved["number"] == 738 and approved["approved"] is True
+        assert approved["attempts"] == 2
+    else:
+        assert lines[0].startswith("[1] 888: rejected."), output.out
+        assert lines[1].startswith("[2] 738: approved."), output.out
