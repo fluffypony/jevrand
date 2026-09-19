@@ -6,11 +6,11 @@ This is a toy. You cannot establish randomness from a single number, and rejecti
 
 ## Install and run
 
-Requires Python 3.10 or newer. Install the CLI directly from this checkout with
+Requires Python 3.10 or newer. Install the CLI directly from GitHub with
 [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```sh
-uv tool install .
+uv tool install git+https://github.com/fluffypony/jevrand.git
 export TYPESAFE_API_KEY='your-key'
 jevrand
 ```
@@ -20,8 +20,11 @@ can run it from any directory without activating a virtual environment. Nothing
 needs to go on PyPI, and you do not need pipx.
 
 If your shell cannot find `jevrand`, run `uv tool update-shell` and open a new
-terminal. After you pull changes, run `uv tool install --reinstall .` from the
-checkout to update the installed copy. Remove it with `uv tool uninstall jevrand`.
+terminal. To update it, repeat the install command with `--reinstall`. Remove it
+with `uv tool uninstall jevrand`.
+
+For a local checkout, run `uv tool install .` from the repository directory.
+After you pull changes, run `uv tool install --reinstall .` to update that copy.
 
 The default range is 0 to 10 000, inclusive, using integers. The command prints the first approved number and stops. Rejected numbers trigger another attempt, with no attempt limit unless you set one.
 
