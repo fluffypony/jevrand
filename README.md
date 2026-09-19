@@ -253,3 +253,7 @@ pytest tests/test_live.py --live-provider openrouter
 ```
 
 These tests need the selected provider's API key and make billable requests. They check repeated digits such as `888`, ordinary numbers, and the rejection loop against Jev itself. Model changes can change the results.
+
+## Licence
+
+BSD 3-Clause. See [LICENSE](LICENSE).
