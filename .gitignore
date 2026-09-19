@@ -10,5 +10,7 @@ dist/
 .env.*
 !.env.example
 .DS_Store
-[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
-[Cc][Ll][Aa][Uu][Dd][Ee].[Mm][Dd]
+AGENTS.md
+CLAUDE.md
+agents.md
+claude.md
