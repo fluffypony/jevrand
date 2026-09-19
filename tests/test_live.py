@@ -83,3 +83,19 @@ def test_cli_shows_rejection_before_final_approval(live_client, monkeypatch, cap
     else:
         assert lines[0].startswith("[1] 888: rejected."), output.out
         assert lines[1].startswith("[2] 738: approved."), output.out
+
+
+def test_cli_count_includes_only_approved_values(live_client, monkeypatch, capsys):
+    candidates = iter([888, 738, 8008, 1882])
+    monkeypatch.setattr(NumberRange, "draw", lambda self: next(candidates))
+
+    assert (
+        main(["--count", "2", "--max-attempts", "4", "--json", "--provider", live_client.provider])
+        == 0
+    )
+    output = capsys.readouterr()
+    assert not output.err
+    verdicts = [json.loads(line) for line in output.out.splitlines()]
+    assert [verdict["number"] for verdict in verdicts] == [888, 738, 8008, 1882]
+    assert [verdict["approved"] for verdict in verdicts] == [False, True, False, True]
+    assert [verdict["attempts"] for verdict in verdicts] == [1, 2, 3, 4]

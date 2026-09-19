@@ -75,7 +75,7 @@ class Provider:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "jevrand/0.2.0",
+                "User-Agent": "jevrand/0.3.0",
             },
             method="POST",
         )

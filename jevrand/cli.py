@@ -24,10 +24,10 @@ def _parser() -> argparse.ArgumentParser:
         ),
         description=(
             "Supply NUMBER to check it once. With no NUMBER, generate candidates until Jev "
-            "approves one. Every candidate and verdict is shown."
+            "approves the requested count (default: 1). Every candidate and verdict is shown."
         ),
         epilog=(
-            "Examples: jevrand 8008 | jevrand | jevrand --range 100 | "
+            "Examples: jevrand 8008 | jevrand --count 100 | jevrand --range 100 | "
             "jevrand --range -10 10 --decimals 2 | jevrand 42 --json"
         ),
     )
@@ -46,6 +46,12 @@ def _parser() -> argparse.ArgumentParser:
         help="generate in 0..TOP or BOTTOM..TOP, inclusive (default: 0..10000)",
     )
     parser.add_argument(
+        "--count",
+        type=int,
+        metavar="N",
+        help="generate N approved numbers (default: 1; repeated values are allowed)",
+    )
+    parser.add_argument(
         "--decimals",
         nargs="?",
         type=int,
@@ -58,7 +64,12 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print one JSON object per verdict; generation uses JSON Lines",
     )
-    parser.add_argument("--max-attempts", type=int, metavar="N", help="check at most N candidates")
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        metavar="N",
+        help="check at most N candidates across the full run",
+    )
     parser.add_argument(
         "--timeout", type=float, default=30, metavar="SECONDS", help="socket timeout (default: 30)"
     )
@@ -93,10 +104,11 @@ def main(argv: list[str] | None = None) -> int:
         args = _parser().parse_intermixed_args(arguments)
         json_output = args.json
         if args.number is not None and any(
-            option is not None for option in (args.bounds, args.decimals, args.max_attempts)
+            option is not None
+            for option in (args.bounds, args.count, args.decimals, args.max_attempts)
         ):
             raise ValidationError(
-                "--range, --decimals, and --max-attempts apply only to generation. "
+                "--range, --count, --decimals, and --max-attempts apply only to generation. "
                 "Omit NUMBER to generate; supply NUMBER alone to check it."
             )
         if args.number == "reasons":
@@ -113,16 +125,23 @@ def main(argv: list[str] | None = None) -> int:
             if len(bounds) not in (1, 2):
                 raise ValidationError("Use --range TOP or --range BOTTOM TOP.")
             bottom, top = bounds if len(bounds) == 2 else (0, bounds[0])
+            count = 1 if args.count is None else args.count
+            if count < 1:
+                raise ValidationError("The count must be a positive integer.")
             decimals = 0 if args.decimals is None else args.decimals
             NumberRange.create(bottom, top, decimals)
             if args.max_attempts is not None and args.max_attempts < 1:
                 raise ValidationError("The attempt limit must be a positive integer.")
+            if args.max_attempts is not None and args.max_attempts < count:
+                raise ValidationError("The attempt limit must be at least the requested count.")
         client = Jevrand(provider=args.provider, timeout=args.timeout)
         if args.number is not None:
             result = client.check(number)
             print(result.to_json() if args.json else _verdict_text(result), flush=True)
+            return 0 if result.approved else 1
         else:
-            result = client.generate(
+            for _ in client.generate_many(
+                count,
                 top=top,
                 bottom=bottom,
                 decimals=decimals,
@@ -130,8 +149,9 @@ def main(argv: list[str] | None = None) -> int:
                 on_verdict=lambda verdict: _report(
                     verdict, json_output=args.json, decimals=decimals
                 ),
-            )
-        return 0 if result.approved else 1
+            ):
+                pass
+        return 0
     except JevrandError as exc:
         if json_output:
             print(json.dumps({"error": {"code": exc.code, "message": str(exc)}}), flush=True)

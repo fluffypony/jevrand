@@ -23,7 +23,14 @@ class InvalidResponseError(JevrandError):
 class AttemptsExhaustedError(JevrandError):
     code = "attempts_exhausted"
 
-    def __init__(self, attempts: int, last_result: object) -> None:
+    def __init__(
+        self, attempts: int, last_result: object, *, requested: int = 1, approved: int = 0
+    ) -> None:
         self.attempts = attempts
         self.last_result = last_result
-        super().__init__(f"Jev rejected all {attempts} candidates.")
+        self.requested = requested
+        self.approved = approved
+        super().__init__(
+            f"Jev approved {approved} of {requested} requested numbers "
+            f"after {attempts} candidates. The attempt limit was reached."
+        )

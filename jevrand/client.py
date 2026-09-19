@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 
 from .errors import AttemptsExhaustedError, ValidationError
@@ -82,18 +82,45 @@ class Jevrand:
         max_attempts: int | None = None,
         on_verdict: Callable[[Result], None] | None = None,
     ) -> Result:
+        return next(
+            self.generate_many(
+                1,
+                top,
+                bottom=bottom,
+                decimals=decimals,
+                max_attempts=max_attempts,
+                on_verdict=on_verdict,
+            )
+        )
+
+    def generate_many(
+        self,
+        count: int,
+        top: NumberInput = 10000,
+        *,
+        bottom: NumberInput = 0,
+        decimals: int = 0,
+        max_attempts: int | None = None,
+        on_verdict: Callable[[Result], None] | None = None,
+    ) -> Iterator[Result]:
+        if type(count) is not int or count < 1:
+            raise ValidationError("The count must be a positive integer.")
         number_range = NumberRange.create(bottom, top, decimals)
         if max_attempts is not None and (type(max_attempts) is not int or max_attempts < 1):
             raise ValidationError("The attempt limit must be a positive integer.")
+        if max_attempts is not None and max_attempts < count:
+            raise ValidationError("The attempt limit must be at least the requested count.")
         if on_verdict is not None and not callable(on_verdict):
             raise ValidationError("The verdict callback must be callable.")
         attempts = 0
-        while True:
+        approved = 0
+        while approved < count:
             attempts += 1
             result = replace(self._judge(number_range.draw(), number_range), attempts=attempts)
             if on_verdict is not None:
                 on_verdict(result)
             if result.approved:
-                return result
-            if max_attempts is not None and attempts >= max_attempts:
-                raise AttemptsExhaustedError(attempts, result)
+                approved += 1
+                yield result
+            if approved < count and max_attempts is not None and attempts >= max_attempts:
+                raise AttemptsExhaustedError(attempts, result, requested=count, approved=approved)

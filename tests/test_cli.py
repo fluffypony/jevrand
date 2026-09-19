@@ -102,6 +102,116 @@ def test_generation_reports_every_candidate_once_in_order(monkeypatch, capsys, j
         ]
 
 
+@pytest.mark.parametrize("json_output", [False, True])
+def test_count_generates_requested_approvals_and_reports_every_verdict(
+    monkeypatch, capsys, json_output
+):
+    calls = decisions(monkeypatch, ["stuck_key", "approved", "too_famous", "approved"])
+    ticks = iter([888, 738, 42, 853])
+    monkeypatch.setattr("jevrand.numbers.secrets.randbelow", lambda width: next(ticks))
+    args = ["--count", "2"]
+    assert main([*args, "--json"] if json_output else args) == 0
+    output = capsys.readouterr()
+
+    assert not output.err
+    assert [call["number"] for call in calls] == [888, 738, 42, 853]
+    if json_output:
+        results = json_lines(output.out)
+        assert [result["number"] for result in results] == [888, 738, 42, 853]
+        assert [result["attempts"] for result in results] == [1, 2, 3, 4]
+        assert [result["approved"] for result in results] == [False, True, False, True]
+        assert [result["reasons"] for result in results] == [["stuck_key"], [], ["too_famous"], []]
+    else:
+        assert output.out.splitlines() == [
+            "[1] 888: rejected. Looks like a stuck key",
+            "[2] 738: approved. Jev has no objection.",
+            "[3] 42: rejected. Too famous",
+            "[4] 853: approved. Jev has no objection.",
+        ]
+
+
+def test_count_one_hundred_outputs_one_hundred_approvals(monkeypatch, capsys):
+    calls = decisions(monkeypatch, ["approved"] * 100)
+    assert main(["--count", "100", "--json"]) == 0
+    output = capsys.readouterr()
+    results = json_lines(output.out)
+
+    assert not output.err
+    assert len(results) == 100
+    assert len(calls) == 100
+    assert all(result["approved"] for result in results)
+    assert [result["attempts"] for result in results] == list(range(1, 101))
+
+
+def test_count_preserves_range_decimal_format_and_repeated_approvals(monkeypatch, capsys):
+    calls = decisions(monkeypatch, ["approved", "approved"])
+    assert main(["--count", "2", "--range", "0.73", "0.73", "--decimals", "3"]) == 0
+    output = capsys.readouterr()
+
+    assert not output.err
+    assert output.out.splitlines() == [
+        "[1] 0.730: approved. Jev has no objection.",
+        "[2] 0.730: approved. Jev has no objection.",
+    ]
+    assert len(calls) == 2
+    assert all(call["range"] == {"bottom": "0.73", "top": "0.73", "decimals": 3} for call in calls)
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_count_partial_exhaustion_retains_approvals_and_rejections(
+    monkeypatch, capsys, json_output
+):
+    calls = decisions(monkeypatch, ["approved", "too_famous", "approved"])
+    args = ["--count", "2", "--range", "42", "42", "--max-attempts", "2"]
+    assert main([*args, "--json"] if json_output else args) == 1
+    output = capsys.readouterr()
+
+    assert len(calls) == 2
+    if json_output:
+        assert not output.err
+        results = json_lines(output.out)
+        assert len(results) == 3
+        assert [result["approved"] for result in results[:-1]] == [True, False]
+        assert [result["attempts"] for result in results[:-1]] == [1, 2]
+        assert results[-1]["error"]["code"] == "attempts_exhausted"
+    else:
+        assert output.out.splitlines() == [
+            "[1] 42: approved. Jev has no objection.",
+            "[2] 42: rejected. Too famous",
+        ]
+        assert output.err.startswith("jevrand: ")
+
+
+def test_count_final_approval_can_use_last_allowed_attempt(monkeypatch, capsys):
+    calls = decisions(monkeypatch, ["approved", "meme", "approved"])
+    assert main(["--count", "2", "--max-attempts", "3", "--json"]) == 0
+    output = capsys.readouterr()
+
+    assert not output.err
+    assert len(calls) == 3
+    assert [result["approved"] for result in json_lines(output.out)] == [True, False, True]
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_count_provider_failure_preserves_prior_approval(monkeypatch, capsys, json_output):
+    calls = decisions(monkeypatch, ["approved", ProviderError("offline"), "approved"])
+    args = ["--count", "2", "--range", "731", "731"]
+    assert main([*args, "--json"] if json_output else args) == 2
+    output = capsys.readouterr()
+
+    assert len(calls) == 2
+    if json_output:
+        assert not output.err
+        results = json_lines(output.out)
+        assert len(results) == 2
+        assert results[0]["number"] == 731
+        assert results[0]["approved"] is True
+        assert results[-1]["error"]["code"] == "provider_error"
+    else:
+        assert output.out == "[1] 731: approved. Jev has no objection.\n"
+        assert output.err.startswith("jevrand: ")
+
+
 def test_generation_formats_decimal_places_on_every_verdict(monkeypatch, capsys):
     decisions(monkeypatch, ["retail_price", "approved"])
     ticks = iter([9990, 7000])
@@ -116,7 +226,8 @@ def test_generation_formats_decimal_places_on_every_verdict(monkeypatch, capsys)
 
 
 @pytest.mark.parametrize("json_output", [False, True])
-def test_generation_flushes_each_verdict_before_next_call(monkeypatch, json_output):
+@pytest.mark.parametrize("first_approved", [False, True])
+def test_generation_flushes_each_verdict_before_next_call(monkeypatch, json_output, first_approved):
     class Capture(io.StringIO):
         def __init__(self):
             super().__init__()
@@ -132,16 +243,20 @@ def test_generation_flushes_each_verdict_before_next_call(monkeypatch, json_outp
 
     def decide(self, state, question):
         if state["number"] == 42:
-            return "too_famous"
+            return "approved" if first_approved else "too_famous"
         assert output.flushed
         if json_output:
             assert json_lines(output.flushed[-1])[0]["number"] == 42
         else:
-            assert output.flushed[-1] == "[1] 42: rejected. Too famous\n"
+            expected = (
+                "approved. Jev has no objection." if first_approved else "rejected. Too famous"
+            )
+            assert output.flushed[-1] == f"[1] 42: {expected}\n"
         return "approved"
 
     monkeypatch.setattr(Provider, "decide", decide)
-    assert main(["--json"] if json_output else []) == 0
+    args = ["--count", "2"] if first_approved else []
+    assert main([*args, "--json"] if json_output else args) == 0
 
 
 @pytest.mark.parametrize("json_output", [False, True])
@@ -209,6 +324,16 @@ def test_approved_number_check(monkeypatch, capsys, value, number):
         ["42", "--decimals"],
         ["42", "--decimals", "0"],
         ["42", "--max-attempts", "5"],
+        ["--count"],
+        ["--count", "0"],
+        ["--count", "-1"],
+        ["--count", "1.5"],
+        ["--count", "NaN"],
+        ["--count", "2", "--max-attempts", "1"],
+        ["42", "--count", "1"],
+        ["42", "--count", "2"],
+        ["reasons", "--count", "1"],
+        ["reasons", "--count", "2"],
     ],
 )
 def test_invalid_input_has_json_error(args, capsys):
@@ -280,6 +405,7 @@ def test_help_explains_checks_and_explicit_range(capsys):
     output = capsys.readouterr()
     assert not output.err
     assert "--range" in output.out
+    assert "--count" in output.out
     assert "NUMBER" in output.out
     assert "BOTTOM" in output.out
     assert "TOP" in output.out
