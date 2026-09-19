@@ -173,7 +173,7 @@ Jev picks one category from the catalogue, or approves the number. These example
 | `suspiciously_round` | Suspiciously round | `1000`, `5000` |
 | `meme` | Meme | `69`, `420`, `1337` |
 | `counting_practice` | Looks like counting practice | `1234`, `9876` |
-| `stuck_key` | Looks like a stuck key | `1111`, `7777` |
+| `stuck_key` | Looks like a stuck key (three or more repeated digits) | `111`, `777`, `888`, `1111` |
 | `copy_paste` | Suspicious use of copy and paste | `1212`, `454545` |
 | `palindrome` | Too pleased with its own reflection | `1221`, `45654` |
 | `borrowed_constant` | Borrowed from a maths textbook | `3.14159`, `2.71828` |
@@ -210,4 +210,15 @@ python3 -m pip install -e '.[dev]'
 pytest
 ```
 
-The tests use mock responses and a local HTTP server. They run without provider credentials or requests to either service.
+The default tests use mock responses and a local HTTP server. They run without
+provider credentials or requests to either service. Live tests are skipped unless
+you select a provider:
+
+```sh
+pytest tests/test_live.py --live-provider typesafe
+pytest tests/test_live.py --live-provider openrouter
+```
+
+These tests need the selected provider's API key and make billable requests. They
+check repeated digits such as `888`, ordinary numbers, and the rejection loop
+against Jev itself. Model changes can change the results.

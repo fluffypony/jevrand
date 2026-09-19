@@ -51,10 +51,10 @@ REJECTION_REASONS: tuple[RejectionReason, ...] = (
         code="stuck_key",
         label="Looks like a stuck key",
         description=(
-            "Repeats the same digit at least four times in succession. "
+            "Repeats the same digit at least three times in succession. "
             "One or two matching digits do not make a stuck keyboard."
         ),
-        examples=("1111", "7777"),
+        examples=("111", "777", "888", "1111"),
     ),
     RejectionReason(
         code="copy_paste",

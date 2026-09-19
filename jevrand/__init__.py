@@ -10,7 +10,7 @@ from .errors import (
 from .models import Result
 from .reasons import REJECTION_REASONS, RejectionReason
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "Jevrand",
     "Result",
