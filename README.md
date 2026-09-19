@@ -6,13 +6,22 @@ This is a toy. You cannot establish randomness from a single number, and rejecti
 
 ## Install and run
 
-Requires Python 3.10 or newer. Install from this checkout:
+Requires Python 3.10 or newer. Install the CLI directly from this checkout with
+[uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```sh
-python3 -m pip install .
+uv tool install .
 export TYPESAFE_API_KEY='your-key'
 jevrand
 ```
+
+This installs `jevrand` on your command path in its own Python environment. You
+can run it from any directory without activating a virtual environment. Nothing
+needs to go on PyPI, and you do not need pipx.
+
+If your shell cannot find `jevrand`, run `uv tool update-shell` and open a new
+terminal. After you pull changes, run `uv tool install --reinstall .` from the
+checkout to update the installed copy. Remove it with `uv tool uninstall jevrand`.
 
 The default range is 0 to 10 000, inclusive, using integers. The command prints the first approved number and stops. Rejected numbers trigger another attempt, with no attempt limit unless you set one.
 
@@ -78,6 +87,12 @@ Exit codes:
 With `--json`, errors use `{"error": {"code": "...", "message": "..."}}` on stdout.
 
 ## Python library
+
+For library use, install the checkout into your project's Python environment:
+
+```sh
+python3 -m pip install /path/to/jevrand
+```
 
 ```python
 from jevrand import Jevrand
